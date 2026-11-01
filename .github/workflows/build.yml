@@ -38,16 +38,29 @@ jobs:
           curl -L -o project.zip "${{ github.event.inputs.file_url }}"
           unzip -o project.zip -d project_app || echo "Warning unzip diabaikan, lanjut build!"
 
-      # MANTRA PENYELAMAT: Regenerasi folder Android ke versi terbaru
-      - name: Fix Android Gradle Files
-        run: |
-          cd project_app
-          flutter create --platforms=android .
-
       - name: Get Dependencies
         run: |
           cd project_app
           flutter pub get
+
+      - name: Fix Android Config & Plugins
+        run: |
+          cd project_app
+          # 1. Hapus folder android lama (bersihin konflik settings.gradle)
+          rm -rf android
+          
+          # 2. Generate ulang folder android pakai template Flutter 3.24
+          flutter create --platforms=android --project-name project_app .
+          
+          # 3. Paksa SDK 35 di project lokal
+          sed -i 's/compileSdkVersion .*/compileSdkVersion 35/' android/app/build.gradle
+          sed -i 's/compileSdk .*/compileSdk 35/' android/app/build.gradle
+          sed -i 's/targetSdkVersion .*/targetSdkVersion 35/' android/app/build.gradle
+          sed -i 's/targetSdk .*/targetSdk 35/' android/app/build.gradle
+          
+          # 4. Paksa SDK 35 di cache plugin package_info_plus yang rewel
+          find ~/.pub-cache -path "*package_info_plus*/android/build.gradle" -exec sed -i 's/flutter.compileSdkVersion/35/g' {} +
+          find ~/.pub-cache -path "*flutter_plugin_android_lifecycle*/android/build.gradle" -exec sed -i 's/flutter.compileSdkVersion/35/g' {} +
 
       - name: Build APK
         run: |

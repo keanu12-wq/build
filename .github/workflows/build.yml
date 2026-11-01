@@ -53,7 +53,7 @@ jobs:
           fi
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: flutter-build-apk
           path: project_app/build/app/outputs/flutter-apk/*.apk

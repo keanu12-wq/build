@@ -38,16 +38,16 @@ jobs:
           curl -L -o project.zip "${{ github.event.inputs.file_url }}"
           unzip -o project.zip -d project_app || echo "Warning unzip diabaikan, lanjut build!"
 
+      # MANTRA PENYELAMAT: Regenerasi folder Android ke versi terbaru
+      - name: Fix Android Gradle Files
+        run: |
+          cd project_app
+          flutter create --platforms=android .
+
       - name: Get Dependencies
         run: |
           cd project_app
           flutter pub get
-
-      # INI MANTRA PAMUNGKASNYA: Maksa semua plugin pakai SDK 34
-      - name: Fix All Plugin Gradle SDK
-        run: |
-          cd project_app/android
-          echo "subprojects { project -> project.afterEvaluate { if (project.hasProperty('android')) { project.android { compileSdkVersion 34 } } } }" >> build.gradle
 
       - name: Build APK
         run: |

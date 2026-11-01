@@ -38,6 +38,15 @@ jobs:
           curl -L -o project.zip "${{ github.event.inputs.file_url }}"
           unzip -o project.zip -d project_app || echo "Warning unzip diabaikan, lanjut build!"
 
+      - name: Auto-Fix Gradle SDK Version
+        run: |
+          cd project_app
+          # Mencari semua build.gradle dan memaksa compileSdk ke versi 34
+          find . -name "build.gradle" -exec sed -i 's/compileSdkVersion .*/compileSdkVersion 34/' {} +
+          find . -name "build.gradle" -exec sed -i 's/compileSdk .*/compileSdk 34/' {} +
+          find . -name "build.gradle" -exec sed -i 's/targetSdkVersion .*/targetSdkVersion 34/' {} +
+          find . -name "build.gradle" -exec sed -i 's/targetSdk .*/targetSdk 34/' {} +
+
       - name: Get Dependencies
         run: |
           cd project_app

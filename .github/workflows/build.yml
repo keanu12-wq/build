@@ -43,24 +43,23 @@ jobs:
           cd project_app
           flutter pub get
 
-      - name: Fix Android Config & Plugins
+      - name: Fix ALL Plugin Gradle SDK
         run: |
+          # 1. SAPU BERSIH: Paksa semua plugin di cache pakai SDK 35
+          find ~/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.compileSdkVersion/35/g' {} \;
+          find ~/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.targetSdkVersion/35/g' {} \;
+          find ~/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.minSdkVersion/21/g' {} \;
+
+          # 2. Bersihin folder android lama biar nggak konflik
           cd project_app
-          # 1. Hapus folder android lama (bersihin konflik settings.gradle)
           rm -rf android
           
-          # 2. Generate ulang folder android pakai template Flutter 3.24
+          # 3. Generate ulang folder android pakai template Flutter 3.24
           flutter create --platforms=android --project-name project_app .
           
-          # 3. Paksa SDK 35 di project lokal
+          # 4. Paksa SDK 35 di project utama
           sed -i 's/compileSdkVersion .*/compileSdkVersion 35/' android/app/build.gradle
           sed -i 's/compileSdk .*/compileSdk 35/' android/app/build.gradle
-          sed -i 's/targetSdkVersion .*/targetSdkVersion 35/' android/app/build.gradle
-          sed -i 's/targetSdk .*/targetSdk 35/' android/app/build.gradle
-          
-          # 4. Paksa SDK 35 di cache plugin package_info_plus yang rewel
-          find ~/.pub-cache -path "*package_info_plus*/android/build.gradle" -exec sed -i 's/flutter.compileSdkVersion/35/g' {} +
-          find ~/.pub-cache -path "*flutter_plugin_android_lifecycle*/android/build.gradle" -exec sed -i 's/flutter.compileSdkVersion/35/g' {} +
 
       - name: Build APK
         run: |

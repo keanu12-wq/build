@@ -1,0 +1,272 @@
+const { TelegramClient } = require("telegram");
+const { StringSession } = require("telegram/sessions");
+const { NewMessage } = require("telegram/events");
+const { CallbackQuery } = require("telegram/events/CallbackQuery");
+const { Button } = require("telegram/tl/custom/button");
+const fs = require("fs");
+const path = require("path");
+const AdmZip = require("adm-zip");
+
+const CONFIG = require("./config");
+const { getUserJob, setUserJob, removeUserJob, isUserBuilding, getActiveJobs, getQueueStats } = require("./zip");
+const { uploadZipToRelease, deleteRelease, triggerWorkflow, getRunStatus, getArtifacts, downloadArtifactZip, getFailedStepLog, sleep } = require("./server");
+
+// Inisialisasi Client
+const SESSION_FILE = "./session.txt";
+const sessionString = fs.existsSync(SESSION_FILE) ? fs.readFileSync(SESSION_FILE, "utf8").trim() : "";
+const client = new TelegramClient(new StringSession(sessionString), CONFIG.API_ID || 123456, CONFIG.API_HASH || "your_api_hash", { connectionRetries: 5 });
+
+// Helper Fungsi
+function isAdmin(id) { return CONFIG.ADMIN_IDS.includes(Number(id)) || Number(id) === Number(CONFIG.OWNER_ID); }
+function buildButtons(rows) {
+  return rows.map(row => row.map(btn => btn.url ? Button.url(btn.text, btn.url) : Button.inline(btn.text, Buffer.from(btn.data))));
+}
+async function sendHtml(chatId, text, btns = null) {
+  return await client.sendMessage(chatId, {
+    message: text, parseMode: "html",
+    ...(btns ? { buttons: buildButtons(btns) } : {}),
+  });
+}
+function progressBar(pct) { return "▓".repeat(Math.round(pct / 10)) + "░".repeat(10 - Math.round(pct / 10)); }
+
+// ==========================================
+// ☠️ MENU UTAMA (TEMA SEREM) ☠️
+// ==========================================
+async function handleStart(event, delId = null) {
+  const chatId = event.chatId;
+  const sender = await event.message.getSender();
+  const userId = Number(sender?.id);
+  const name = sender?.firstName || "Unknown";
+
+  const text = `
+☠️ <b>CYBER BUILD SYSTEM v1.0</b> ☠️
+━━━━━━━━━━━━━━━━━━━━
+<blockquote>Selamat datang di markas, <b>${name}</b>.
+Di sini lu bisa nyulap source code Flutter lu jadi APK dalam hitungan menit. Jangan bikin sistem ini crash, atau lu gue banned.</blockquote>
+
+💀 <b>SYSTEM STATUS:</b> <code>[ ONLINE ]</code>
+⚙️ <b>ENGINE:</b> <code>Flutter Cloud Compiler</code>
+🛡️ <b>SECURITY:</b> <code>MAXIMUM</code>
+
+<i>Pilih senjata lu di bawah ini:</i>
+`;
+
+  const btns = [
+    [{ text: "⚡ MULAI BUILD APK", data: "build" }, { text: "📊 PANTAU ANTRIAN", data: "queue" }],
+    [{ text: "💀 STATUS SISTEM", data: "status" }, { text: "📖 CARA PAKAI", data: "help" }]
+  ];
+  if (isAdmin(userId)) btns.push([{ text: "🔪 OWNER/ADMIN PANEL", data: "admin_panel" }]);
+
+  if (delId) { try { await client.deleteMessages(chatId, [delId], { revoke: true }); } catch (_) {} }
+  await sendHtml(chatId, text, btns);
+}
+
+// ==========================================
+// ⚡ PROSES BUILD ⚡
+// ==========================================
+async function handleBuild(chatId, userId, delId = null) {
+  if (isUserBuilding(userId)) {
+    return await sendHtml(chatId, `⚠️ <b>SABAR WOI!</b>\n<blockquote>Build lu masih jalan di antrian. Tungguin, jangan spam!</blockquote>`, [[{ text: "❌ BATALKAN", data: "cancel" }]], delId);
+  }
+
+  setUserJob(userId, { chatId, userId, status: "waiting_zip", updatedAt: Date.now() });
+  const text = `
+☠️ <b>BUILD MODE ACTIVATED</b> ☠️
+━━━━━━━━━━━━━━━━━━━━
+<blockquote>📦 <b>Format:</b> <code>.zip</code> (Wajib)
+📁 <b>Wajib ada:</b> <code>pubspec.yaml</code>
+⚖️ <b>Max Size:</b> <code>2 GB</code>
+⏳ <b>Timeout:</b> <code>15 Menit</code></blockquote>
+
+<b>Langkah selanjutnya:</b>
+Kirim file ZIP project Flutter lu ke chat ini sekarang juga. Jangan kirim teks, gue muntah.
+`;
+  await sendHtml(chatId, text, [[{ text: "❌ BATALKAN BUILD", data: "cancel" }]], delId);
+}
+
+// ==========================================
+// 📁 HANDLER FILE ZIP & MONITORING 📁
+// ==========================================
+async function handleZipFile(event) {
+  const chatId = event.chatId;
+  const userId = Number(event.message.senderId);
+  const job = getUserJob(userId);
+
+  if (!job || job.status !== "waiting_zip") return;
+  if (!event.message.media || !event.message.media.document) return;
+
+  const doc = event.message.media.document;
+  const fileName = doc.attributes?.find(a => a.fileName)?.fileName || "project.zip";
+  
+  if (!fileName.endsWith(".zip")) {
+    return await sendHtml(chatId, `❌ <b>FORMAT SALAH!</b>\n<blockquote>Gue minta ZIP, bukan file sembarangan. Zip ulang project lu!</blockquote>`);
+  }
+
+  const msgId = (await sendHtml(chatId, `⏳ <b>MENGUNDUH FILE...</b>\n<blockquote>File: <code>${fileName}</code>\n\nTunggu, jangan kemana-mana.</blockquote>`)).id;
+  setUserJob(userId, { ...job, status: "uploading", fileName });
+
+  try {
+    const localZip = path.join(CONFIG.TMP_DIR, `${userId}_${Date.now()}.zip`);
+    await client.downloadMedia(event.message, { outputFile: localZip });
+
+    await client.editMessage(chatId, { message: msgId, text: `☁️ <b>MENGIRIM KE GITHUB...</b>\n<blockquote>Lagi di-upload ke server build. Kenceng dikit.</blockquote>` });
+    
+    const tag = `build-${userId}-${Date.now()}`;
+    const { releaseId, browserUrl } = await uploadZipToRelease(localZip, fileName, tag);
+    if (fs.existsSync(localZip)) fs.unlinkSync(localZip);
+
+    await client.editMessage(chatId, { message: msgId, text: `⚙️ <b>MEMICU COMPILER...</b>\n<blockquote>GitHub Actions lagi disuruh kerja. Mempersiapkan Flutter SDK.</blockquote>` });
+    
+    const runId = await triggerWorkflow(browserUrl, tag, "release");
+    setUserJob(userId, { ...job, status: "building", tag, runId, msgId, buildStart: Date.now() });
+
+    // Panggil Monitor Build
+    monitorBuild(userId, chatId, msgId, runId, releaseId);
+
+  } catch (err) {
+    removeUserJob(userId);
+    await client.editMessage(chatId, { message: msgId, text: `💀 <b>ANJIR GAGAL!</b>\n<blockquote>${err.message}</blockquote>` });
+  }
+}
+
+async function monitorBuild(userId, chatId, msgId, runId, releaseId) {
+  let lastStatus = "";
+  
+  while (true) {
+    const job = getUserJob(userId);
+    if (!job) return; // Dibatalkan
+
+    if (Date.now() - job.buildStart > CONFIG.BUILD_TIMEOUT_MS) {
+      removeUserJob(userId);
+      if (releaseId) await deleteRelease(releaseId).catch(() => {});
+      return await client.editMessage(chatId, { message: msgId, text: `🛑 <b>BUILD TIMEOUT!</b>\n<blockquote>Server kelamaan. Cek lagi kodingan lu, mungkin ada error fatal.</blockquote>` });
+    }
+
+    const run = await getRunStatus(runId);
+
+    if (run.status === "in_progress" && lastStatus !== "in_progress") {
+      lastStatus = "in_progress";
+      await client.editMessage(chatId, { message: msgId, text: `⚡ <b>SEDANG DIKOMPILASI...</b>\n<blockquote>Progress: ${progressBar(50)} 50%\n\nFlutter SDK lagi muter otaknya. Sabar.</blockquote>` });
+    
+    } else if (run.status === "completed") {
+      if (run.conclusion === "success") {
+        await client.editMessage(chatId, { message: msgId, text: `📦 <b>BUILD SUKSES! MENGAMBIL APK...</b>` });
+        
+        const artifacts = await getArtifacts(runId);
+        if (artifacts.length === 0) throw new Error("Artifact APK gak nemu di server!");
+
+        const zipDest = path.join(CONFIG.TMP_DIR, `output_${Date.now()}.zip`);
+        await downloadArtifactZip(artifacts[0].id, zipDest);
+
+        const zip = new AdmZip(zipDest);
+        const apkEntry = zip.getEntries().find(e => e.entryName.endsWith(".apk"));
+        if (!apkEntry) throw new Error("File APK gak ada di dalam ZIP!");
+
+        const apkDest = path.join(CONFIG.TMP_DIR, `app_${Date.now()}.apk`);
+        fs.writeFileSync(apkDest, apkEntry.getData());
+        fs.unlinkSync(zipDest);
+
+        await client.sendFile(chatId, {
+          file: apkDest,
+          caption: `🎉 <b>APK BERHASIL DIBUAT!</b>\n━━━━━━━━━━━━━━━━━━━━\n<blockquote>⏱ <b>Waktu:</b> ${run.durationSec} detik\n💾 <b>Size:</b> ${(fs.statSync(apkDest).size / 1024 / 1024).toFixed(2)} MB</blockquote>\n\n<i>Silakan install. Jangan lupa traktir gue.</i> 💀`,
+          parseMode: "html"
+        });
+
+        fs.unlinkSync(apkDest);
+        if (releaseId) await deleteRelease(releaseId).catch(() => {});
+        removeUserJob(userId);
+        return;
+
+      } else {
+        // Gagal Build
+        removeUserJob(userId);
+        const errLog = await getFailedStepLog(runId);
+        let errText = `❌ <b>BUILD GAGAL TOTAL!</b>\n<blockquote>Kodingan lu berantakan. Benerin dulu sana.</blockquote>`;
+        if (errLog && errLog.errorLines) {
+          errText += `\n\n<pre>${errLog.errorLines.join("\n").slice(0, 1000)}</pre>`;
+        }
+        if (releaseId) await deleteRelease(releaseId).catch(() => {});
+        return await client.editMessage(chatId, { message: msgId, text: errText, parseMode: "html" });
+      }
+    }
+    await sleep(CONFIG.POLL_INTERVAL_MS);
+  }
+}
+
+// ==========================================
+// 🎛️ CALLBACK HANDLER (TOMBOL-Tombol) 🎛️
+// ==========================================
+async function handleCallback(event) {
+  const data = event.data.toString();
+  const chatId = event.chatId;
+  const userId = Number(event.senderId);
+  const msgId = event.messageId;
+
+  await event.answer(); // Stop loading spinner
+
+  if (data === "start") return await handleStart({ chatId, message: { getSender: async () => ({ id: userId }) } }, msgId);
+  
+  if (data === "build") return await handleBuild(chatId, userId, msgId);
+
+  if (data === "cancel") {
+    removeUserJob(userId);
+    return await client.editMessage(chatId, { message: msgId, text: `✅ <b>DIBATALKAN.</b>\n<blockquote>Nyawa lu aman. Kembali ke menu.</blockquote>`, buttons: buildButtons([[{ text: "🏠 MENU UTAMA", data: "start" }]]) });
+  }
+
+  if (data === "queue") {
+    const jobs = getActiveJobs();
+    let text = `📊 <b>ANTRIAN BUILD SAAT INI</b>\n━━━━━━━━━━━━━━━━━━━━\n`;
+    if (jobs.length === 0) text += `<blockquote>Tidak ada yang lagi build. Sistem sepi.</blockquote>`;
+    else jobs.forEach((j, i) => { text += `${i+1}. User <code>${j.userId}</code> - Status: <b>${j.status.toUpperCase()}</b>\n`; });
+    return await client.editMessage(chatId, { message: msgId, text, buttons: buildButtons([[{ text: "🔄 REFRESH", data: "queue" }, { text: "🏠 MENU", data: "start" }]]) });
+  }
+
+  if (data === "help") {
+    const text = `📖 <b>PANDUAN PAKAI BOT</b>\n━━━━━━━━━━━━━━━━━━━━\n<blockquote>1. Klik MULAI BUILD APK\n2. Kirim file ZIP project Flutter lu\n3. Tunggu 5-10 menit\n4. APK dikirim otomatis ke sini</blockquote>\n<b>Inget:</b> File ZIP harus ada <code>pubspec.yaml</code> di dalamnya!`;
+    return await client.editMessage(chatId, { message: msgId, text, buttons: buildButtons([[{ text: "🏠 KEMBALI", data: "start" }]]) });
+  }
+
+  if (data === "admin_panel") {
+    if (!isAdmin(userId)) return await event.answer({ message: "❌ LU BUKAN ADMIN, MINGGIR!", alert: true });
+    const text = `🔪 <b>OWNER CONTROL PANEL</b> 🔪\n━━━━━━━━━━━━━━━━━━━━\n<blockquote>Sistem siap dikendalikan. Hati-hati salah pencet.</blockquote>`;
+    return await client.editMessage(chatId, { message: msgId, text, buttons: buildButtons([[{ text: "🏠 KEMBALI", data: "start" }]]) });
+  }
+}
+
+// ==========================================
+// 🚀 INISIALISASI BOT 🚀
+// ==========================================
+(async () => {
+  if (!fs.existsSync(CONFIG.TMP_DIR)) fs.mkdirSync(CONFIG.TMP_DIR, { recursive: true });
+  
+  console.log(`☠️ Menyalakan sistem...`);
+  
+  await client.start({
+    botAuthToken: CONFIG.BOT_TOKEN,
+    onError: (err) => console.log(err),
+  });
+  
+  fs.writeFileSync(SESSION_FILE, client.session.save());
+  console.log(`✅ Bot berhasil menyala!`);
+
+  // Handler Pesan
+  client.addEventHandler(async (event) => {
+    const text = event.message.text?.trim();
+    if (text === "/start") return await handleStart(event);
+    
+    // Handler File ZIP masuk
+    if (event.message.media) return await handleZipFile(event);
+
+    // Cek Command Admin (Bisa lu tambahin sendiri nanti)
+    const userId = Number(event.message.senderId);
+    if (text === "/killall" && isAdmin(userId)) {
+      return await sendHtml(event.chatId, `💀 Sistem mematikan semua build...`);
+    }
+  }, new NewMessage({}));
+
+  // Handler Tombol
+  client.addEventHandler(async (event) => {
+    try { await handleCallback(event); } catch (e) { console.error(e); }
+  }, new CallbackQuery({}));
+
+})();

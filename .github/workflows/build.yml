@@ -1,0 +1,59 @@
+name: Build Flutter APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      file_url:
+        description: 'URL ZIP Project'
+        required: true
+      tag_name:
+        description: 'Tag Name'
+        required: true
+      build_type:
+        description: 'Release / Debug'
+        required: true
+        default: 'release'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.16.0'
+          channel: 'stable'
+
+      - name: Download Project ZIP
+        run: |
+          curl -L -o project.zip "${{ github.event.inputs.file_url }}"
+          unzip project.zip -d project_app
+
+      - name: Get Dependencies
+        run: |
+          cd project_app
+          flutter pub get
+
+      - name: Build APK
+        run: |
+          cd project_app
+          if [ "${{ github.event.inputs.build_type }}" = "debug" ]; then
+            flutter build apk --debug
+          else
+            flutter build apk --release
+          fi
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: flutter-build-apk
+          path: project_app/build/app/outputs/flutter-apk/*.apk

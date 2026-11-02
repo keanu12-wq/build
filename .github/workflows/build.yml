@@ -37,20 +37,28 @@ jobs:
           curl -L -o project.zip "${{ github.event.inputs.file_url }}"
           unzip -o project.zip -d project_app || echo "Warning unzip diabaikan, lanjut build!"
 
-      - name: MAKSIMALIN GRADLE KE 8.14 (Paksa Timpa)
+      - name: MAKSIMALIN GRADLE KE 8.14
         run: |
           cd project_app/android/gradle/wrapper
-          # Hapus file lama, timpa paksa pakai Gradle 8.14
           echo "distributionBase=GRADLE_USER_HOME" > gradle-wrapper.properties
           echo "distributionPath=wrapper/dists" >> gradle-wrapper.properties
           echo "zipStoreBase=GRADLE_USER_HOME" >> gradle-wrapper.properties
           echo "zipStorePath=wrapper/dists" >> gradle-wrapper.properties
           echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.14-all.zip" >> gradle-wrapper.properties
 
+      - name: FIX FONT AWESOME & GET DEPENDENCIES
+        run: |
+          cd project_app
+          # Paksa upgrade font_awesome_flutter biar cocok sama Flutter baru
+          sed -i 's/font_awesome_flutter: .*/font_awesome_flutter: ^10.9.0/' pubspec.yaml
+          # Hapus pubspec.lock biar dia nyari versi terbaru
+          rm -f pubspec.lock
+          # Ambil dependensi ulang
+          flutter pub get
+
       - name: Build APK
         run: |
           cd project_app
-          # Tetep pake flag bypass buat jaga-jaga
           if [ "${{ github.event.inputs.build_type }}" = "debug" ]; then
             flutter build apk --debug --android-skip-build-dependency-validation
           else

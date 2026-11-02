@@ -27,9 +27,10 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Setup Flutter
+      - name: Setup Flutter (Kunci Versi 3.27.0)
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.27.0' # Versi tengah-tengah, support CardThemeData tapi IconData belum final
           channel: 'stable'
 
       - name: Download Project ZIP
@@ -37,25 +38,24 @@ jobs:
           curl -L -o project.zip "${{ github.event.inputs.file_url }}"
           unzip -o project.zip -d project_app || echo "Warning unzip diabaikan, lanjut build!"
 
-      - name: BRUTE FORCE GRADLE 8.14 & FIX PLUGINS
+      - name: Fix Dependencies & Gradle
         run: |
           cd project_app
           
-          # 1. CARI SEMUA file gradle-wrapper.properties dan paksa ganti ke 8.14
-          find . -name "gradle-wrapper.properties" -exec sed -i 's/gradle-.*-all.zip/gradle-8.14-all.zip/' {} +
-          find . -name "gradle-wrapper.properties" -exec sed -i 's/gradle-.*-bin.zip/gradle-8.14-bin.zip/' {} +
-          
-          # 2. Update font_awesome_flutter agar tidak error di Flutter baru
-          sed -i 's/font_awesome_flutter: .*/font_awesome_flutter: ^10.12.0/' pubspec.yaml
+          # 1. Downgrade Font Awesome ke versi yang aman buat Flutter 3.27
+          sed -i 's/font_awesome_flutter: .*/font_awesome_flutter: ^10.8.0/' pubspec.yaml
           rm -f pubspec.lock
           
-          # 3. Ambil dependensi ulang
+          # 2. Paksa Gradle 8.9 (Syarat minimal Flutter 3.27)
+          find . -name "gradle-wrapper.properties" -exec sed -i 's/gradle-.*-all.zip/gradle-8.9-all.zip/' {} +
+          
+          # 3. Get Deps
           flutter pub get
 
       - name: Build APK
         run: |
           cd project_app
-          # PAKAI FLAG BYPASS: Agar Flutter tidak ngecek versi Gradle lagi
+          # Pake bypass flag biar Gradle anteng
           if [ "${{ github.event.inputs.build_type }}" = "debug" ]; then
             flutter build apk --debug --android-skip-build-dependency-validation
           else

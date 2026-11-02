@@ -43,14 +43,14 @@ jobs:
           cd project_app
           flutter pub get
 
-      - name: Fix ALL Plugin Gradle SDK & Kotlin
+      - name: Fix ALL Plugin Gradle SDK & Kotlin (SNIPER MODE)
         run: |
           # 1. SAPU BERSIH: Paksa semua plugin di cache pakai SDK 35
           find ~/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.compileSdkVersion/35/g' {} \;
           find ~/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.targetSdkVersion/35/g' {} \;
           find ~/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.minSdkVersion/21/g' {} \;
 
-          # 2. Bersihin folder android lama biar nggak konflik
+          # 2. Bersihin folder android lama
           cd project_app
           rm -rf android
           
@@ -61,11 +61,14 @@ jobs:
           sed -i 's/compileSdkVersion .*/compileSdkVersion 35/' android/app/build.gradle
           sed -i 's/compileSdk .*/compileSdk 35/' android/app/build.gradle
           
-          # 5. UPDATE KOTLIN VERSION (Biar nggak bentrok sama package_info_plus)
-          # Ganti versi Kotlin di settings.gradle (untuk Flutter baru)
-          sed -i 's/id "org.jetbrains.kotlin.android" version ".*" apply false/id "org.jetbrains.kotlin.android" version "1.9.24" apply false/' android/settings.gradle || true
-          # Ganti versi Kotlin di build.gradle (untuk Flutter lama)
-          sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "1.9.24"/' android/build.gradle || true
+          # 5. UPDATE AGP & KOTLIN VERSION (Tembakan Presisi)
+          # Ganti AGP ke 8.3.0
+          sed -i 's/id "com.android.application" version ".*"/id "com.android.application" version "8.3.0"/g' android/settings.gradle
+          # Ganti Kotlin ke 2.0.21
+          sed -i 's/id "org.jetbrains.kotlin.android" version ".*"/id "org.jetbrains.kotlin.android" version "2.0.21"/g' android/settings.gradle
+          
+          # 6. Jaga-jaga kalau filenya format lama (build.gradle)
+          sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "2.0.21"/' android/build.gradle || true
 
       - name: Build APK
         run: |

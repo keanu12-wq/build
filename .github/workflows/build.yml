@@ -27,9 +27,10 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Setup Flutter
+      - name: Setup Flutter (Kunci Versi Stabil)
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.24.0' # INI KUNCINYA, jangan pakai stable
           channel: 'stable'
 
       - name: Download Project ZIP
@@ -37,32 +38,28 @@ jobs:
           curl -L -o project.zip "${{ github.event.inputs.file_url }}"
           unzip -o project.zip -d project_app || echo "Warning unzip diabaikan, lanjut build!"
 
-      - name: MAKSIMALIN GRADLE KE 8.14
+      - name: Fix Gradle ke 8.7 (Klop sama Flutter 3.24.0)
         run: |
           cd project_app/android/gradle/wrapper
           echo "distributionBase=GRADLE_USER_HOME" > gradle-wrapper.properties
           echo "distributionPath=wrapper/dists" >> gradle-wrapper.properties
           echo "zipStoreBase=GRADLE_USER_HOME" >> gradle-wrapper.properties
           echo "zipStorePath=wrapper/dists" >> gradle-wrapper.properties
-          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.14-all.zip" >> gradle-wrapper.properties
+          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-all.zip" >> gradle-wrapper.properties
 
-      - name: FIX FONT AWESOME & GET DEPENDENCIES
+      - name: Get Dependencies
         run: |
           cd project_app
-          # Paksa upgrade font_awesome_flutter biar cocok sama Flutter baru
-          sed -i 's/font_awesome_flutter: .*/font_awesome_flutter: ^10.9.0/' pubspec.yaml
-          # Hapus pubspec.lock biar dia nyari versi terbaru
           rm -f pubspec.lock
-          # Ambil dependensi ulang
           flutter pub get
 
       - name: Build APK
         run: |
           cd project_app
           if [ "${{ github.event.inputs.build_type }}" = "debug" ]; then
-            flutter build apk --debug --android-skip-build-dependency-validation
+            flutter build apk --debug
           else
-            flutter build apk --release --android-skip-build-dependency-validation
+            flutter build apk --release
           fi
 
       - name: Upload Artifact

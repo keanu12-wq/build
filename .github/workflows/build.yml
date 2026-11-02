@@ -27,10 +27,9 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Setup Flutter (Kunci Versi Stabil)
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0' # INI KUNCINYA, jangan pakai stable
           channel: 'stable'
 
       - name: Download Project ZIP
@@ -38,19 +37,18 @@ jobs:
           curl -L -o project.zip "${{ github.event.inputs.file_url }}"
           unzip -o project.zip -d project_app || echo "Warning unzip diabaikan, lanjut build!"
 
-      - name: Fix Gradle ke 8.7 (Klop sama Flutter 3.24.0)
-        run: |
-          cd project_app/android/gradle/wrapper
-          echo "distributionBase=GRADLE_USER_HOME" > gradle-wrapper.properties
-          echo "distributionPath=wrapper/dists" >> gradle-wrapper.properties
-          echo "zipStoreBase=GRADLE_USER_HOME" >> gradle-wrapper.properties
-          echo "zipStorePath=wrapper/dists" >> gradle-wrapper.properties
-          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-all.zip" >> gradle-wrapper.properties
-
-      - name: Get Dependencies
+      - name: Force Gradle 8.14 & Fix FontAwesome
         run: |
           cd project_app
+          
+          # 1. Ganti versi Gradle langsung di file wrapper-nya
+          sed -i 's/gradle-.*-all.zip/gradle-8.14-all.zip/' android/gradle/wrapper/gradle-wrapper.properties
+          
+          # 2. Update font_awesome_flutter biar support Flutter baru
+          sed -i 's/font_awesome_flutter: .*/font_awesome_flutter: ^10.12.0/' pubspec.yaml
           rm -f pubspec.lock
+          
+          # 3. Ambil dependencies
           flutter pub get
 
       - name: Build APK

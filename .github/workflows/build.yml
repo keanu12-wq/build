@@ -38,35 +38,35 @@ jobs:
           curl -L -o project.zip "${{ github.event.inputs.file_url }}"
           unzip -o project.zip -d project_app || echo "Warning unzip diabaikan, lanjut build!"
 
-      - name: DOWNGRADE PLUGIN REWEL & FIX GRADLE
+      - name: Fix Kotlin & Gradle (FINAL BOSS)
         run: |
           cd project_app
           
-          # 1. TURUNIN VERSI PACKAGE_INFO_PLUS (Biang kerok Kotlin 2.2.0)
-          # Kita paksa pakai versi 8.3.1 yang stabil dan support Kotlin lama
-          sed -i 's/package_info_plus: .*/package_info_plus: ^8.3.1/' pubspec.yaml
-          rm -f pubspec.lock
-          
-          # 2. Get dependencies ulang
+          # 1. Get dependencies dulu
           flutter pub get
           
-          # 3. Sapu bersih cache plugin
+          # 2. Sapu bersih cache plugin
           find ~/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.compileSdkVersion/34/g' {} \;
           find ~/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.targetSdkVersion/34/g' {} \;
 
-          # 4. Bersihin folder android lama & Generate ulang
+          # 3. Bersihin folder android lama & Generate ulang
           rm -rf android
           flutter create --platforms=android --project-name project_app .
           
-          # 5. TIMPA GRADLE KE VERSI 8.7
+          # 4. TIMPA GRADLE KE VERSI 8.7
           echo "distributionBase=GRADLE_USER_HOME" > android/gradle/wrapper/gradle-wrapper.properties
           echo "distributionPath=wrapper/dists" >> android/gradle/wrapper/gradle-wrapper.properties
           echo "zipStoreBase=GRADLE_USER_HOME" >> android/gradle/wrapper/gradle-wrapper.properties
           echo "zipStorePath=wrapper/dists" >> android/gradle/wrapper/gradle-wrapper.properties
           echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-all.zip" >> android/gradle/wrapper/gradle-wrapper.properties
           
-          # 6. PAKSA KOTLIN KE 1.9.22 & SDK 34
-          sed -i 's/id "org.jetbrains.kotlin.android" version ".*" apply false/id "org.jetbrains.kotlin.android" version "1.9.22" apply false/' android/settings.gradle
+          # 5. PAKSA KOTLIN KE VERSI 2.1.0 (Biar bisa baca metadata 2.2.0)
+          sed -i 's/id "org.jetbrains.kotlin.android" version ".*"/id "org.jetbrains.kotlin.android" version "2.1.0" apply false/' android/settings.gradle
+          
+          # 6. AGP 8.3.0 biar sinkron
+          sed -i 's/id "com.android.application" version ".*"/id "com.android.application" version "8.3.0" apply false/' android/settings.gradle
+          
+          # 7. Paksa SDK 34 di project utama
           sed -i 's/compileSdkVersion .*/compileSdkVersion 34/' android/app/build.gradle
           sed -i 's/compileSdk .*/compileSdk 34/' android/app/build.gradle
           sed -i 's/targetSdkVersion .*/targetSdkVersion 34/' android/app/build.gradle

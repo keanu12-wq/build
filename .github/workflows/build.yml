@@ -43,7 +43,7 @@ jobs:
           cd project_app
           flutter pub get
 
-      - name: Fix ALL Plugin Gradle SDK
+      - name: Fix ALL Plugin Gradle SDK & Kotlin
         run: |
           # 1. SAPU BERSIH: Paksa semua plugin di cache pakai SDK 35
           find ~/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.compileSdkVersion/35/g' {} \;
@@ -60,6 +60,12 @@ jobs:
           # 4. Paksa SDK 35 di project utama
           sed -i 's/compileSdkVersion .*/compileSdkVersion 35/' android/app/build.gradle
           sed -i 's/compileSdk .*/compileSdk 35/' android/app/build.gradle
+          
+          # 5. UPDATE KOTLIN VERSION (Biar nggak bentrok sama package_info_plus)
+          # Ganti versi Kotlin di settings.gradle (untuk Flutter baru)
+          sed -i 's/id "org.jetbrains.kotlin.android" version ".*" apply false/id "org.jetbrains.kotlin.android" version "1.9.24" apply false/' android/settings.gradle || true
+          # Ganti versi Kotlin di build.gradle (untuk Flutter lama)
+          sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "1.9.24"/' android/build.gradle || true
 
       - name: Build APK
         run: |

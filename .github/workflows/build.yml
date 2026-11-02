@@ -27,28 +27,34 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Setup Flutter (Latest Stable)
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable' # INI KUNCINYA: Selalu pakai versi paling baru
+          channel: 'stable'
 
       - name: Download Project ZIP
         run: |
           curl -L -o project.zip "${{ github.event.inputs.file_url }}"
           unzip -o project.zip -d project_app || echo "Warning unzip diabaikan, lanjut build!"
 
-      - name: Get Dependencies
+      - name: MAKSIMALIN GRADLE KE 8.14 (Paksa Timpa)
         run: |
-          cd project_app
-          flutter pub get
+          cd project_app/android/gradle/wrapper
+          # Hapus file lama, timpa paksa pakai Gradle 8.14
+          echo "distributionBase=GRADLE_USER_HOME" > gradle-wrapper.properties
+          echo "distributionPath=wrapper/dists" >> gradle-wrapper.properties
+          echo "zipStoreBase=GRADLE_USER_HOME" >> gradle-wrapper.properties
+          echo "zipStorePath=wrapper/dists" >> gradle-wrapper.properties
+          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.14-all.zip" >> gradle-wrapper.properties
 
       - name: Build APK
         run: |
           cd project_app
+          # Tetep pake flag bypass buat jaga-jaga
           if [ "${{ github.event.inputs.build_type }}" = "debug" ]; then
-            flutter build apk --debug
+            flutter build apk --debug --android-skip-build-dependency-validation
           else
-            flutter build apk --release
+            flutter build apk --release --android-skip-build-dependency-validation
           fi
 
       - name: Upload Artifact

@@ -43,32 +43,37 @@ jobs:
           cd project_app
           flutter pub get
 
-      - name: Fix ALL Plugin Gradle SDK & Kotlin (SNIPER MODE)
+      - name: ULTIMATE BRUTE FORCE FIX
         run: |
-          # 1. SAPU BERSIH: Paksa semua plugin di cache pakai SDK 35
-          find ~/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.compileSdkVersion/35/g' {} \;
-          find ~/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.targetSdkVersion/35/g' {} \;
-          find ~/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.minSdkVersion/21/g' {} \;
+          # 1. Sapu bersih cache plugin biar nurut pakai SDK 34
+          find ~/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.compileSdkVersion/34/g' {} \;
+          find ~/.pub-cache -name "build.gradle" -exec sed -i 's/flutter.targetSdkVersion/34/g' {} \;
 
           # 2. Bersihin folder android lama
           cd project_app
           rm -rf android
           
-          # 3. Generate ulang folder android pakai template Flutter 3.24
+          # 3. Generate ulang android
           flutter create --platforms=android --project-name project_app .
           
-          # 4. Paksa SDK 35 di project utama
-          sed -i 's/compileSdkVersion .*/compileSdkVersion 35/' android/app/build.gradle
-          sed -i 's/compileSdk .*/compileSdk 35/' android/app/build.gradle
+          # 4. TIMPA PAKSA GRADLE KE VERSI 8.7 (Nggak pakai sed lagi, tapi ditulis ulang)
+          echo "distributionBase=GRADLE_USER_HOME" > android/gradle/wrapper/gradle-wrapper.properties
+          echo "distributionPath=wrapper/dists" >> android/gradle/wrapper/gradle-wrapper.properties
+          echo "zipStoreBase=GRADLE_USER_HOME" >> android/gradle/wrapper/gradle-wrapper.properties
+          echo "zipStorePath=wrapper/dists" >> android/gradle/wrapper/gradle-wrapper.properties
+          echo "distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-all.zip" >> android/gradle/wrapper/gradle-wrapper.properties
           
-          # 5. UPDATE AGP & KOTLIN VERSION (Tembakan Presisi)
-          # Ganti AGP ke 8.3.0
-          sed -i 's/id "com.android.application" version ".*"/id "com.android.application" version "8.3.0"/g' android/settings.gradle
-          # Ganti Kotlin ke 2.0.21
-          sed -i 's/id "org.jetbrains.kotlin.android" version ".*"/id "org.jetbrains.kotlin.android" version "2.0.21"/g' android/settings.gradle
+          # 5. PAKSA KOTLIN KE 1.9.22
+          sed -i 's/id "org.jetbrains.kotlin.android" version ".*" apply false/id "org.jetbrains.kotlin.android" version "1.9.22" apply false/' android/settings.gradle
           
-          # 6. Jaga-jaga kalau filenya format lama (build.gradle)
-          sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "2.0.21"/' android/build.gradle || true
+          # 6. Paksa SDK 34 di project utama
+          sed -i 's/compileSdkVersion .*/compileSdkVersion 34/' android/app/build.gradle
+          sed -i 's/compileSdk .*/compileSdk 34/' android/app/build.gradle
+          sed -i 's/targetSdkVersion .*/targetSdkVersion 34/' android/app/build.gradle
+          sed -i 's/targetSdk .*/targetSdk 34/' android/app/build.gradle
+          
+          # 7. Kasih izin eksekusi gradlew
+          chmod +x android/gradlew
 
       - name: Build APK
         run: |
